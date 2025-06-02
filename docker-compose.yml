@@ -1,0 +1,82 @@
+services:
+  postgres:
+    image: postgres:15
+    restart: always
+    environment:
+      POSTGRES_DB: trafficdb
+      POSTGRES_USER: trafficuser
+      POSTGRES_PASSWORD: trafficpass
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5433:5432"
+
+  traffic-sim:
+    build:
+      context: ./docker
+    volumes:
+      - ./services/traffic-sim:/app
+    environment:
+      SERVICE_NAME: sim
+      SERVICE_PORT: 8001
+      CONTROL_URL: http://traffic-control:8003
+    depends_on:
+      - postgres
+      - traffic-control
+      - traffic-storage
+      - traffic-sync
+    env_file:
+      - .env
+    ports:
+      - "8001:8001"
+
+  traffic-storage:
+    build:
+      context: ./docker
+    volumes:
+      - ./services/traffic-storage:/app
+    environment:
+      SERVICE_NAME: storage
+      SERVICE_PORT: 8000
+    depends_on:
+      - postgres
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+
+  traffic-sync:
+    build:
+      context: ./docker
+    volumes:
+      - ./services/traffic-sync:/app
+    environment:
+      SERVICE_NAME: sync
+      SERVICE_PORT: 8002
+    env_file:
+      - .env
+    depends_on:
+      - postgres
+    ports:
+      - "8002:8002"
+
+  traffic-control:
+    build:
+      context: ./docker
+    volumes:
+      - ./services/traffic-control:/app
+    environment:
+      SERVICE_NAME: control
+      SERVICE_PORT: 8003
+    depends_on:
+      - postgres
+      - traffic-storage
+      - traffic-sync
+    env_file:
+      - .env
+    ports:
+      - "8003:8003"
+
+volumes:
+  pgdata:
