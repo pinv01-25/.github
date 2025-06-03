@@ -7,7 +7,7 @@ if [ ! -f ".env" ]; then
     exit 1
 fi
 
-# Leer configuración IoT
+# Leer configuración del modo de ejecución
 source .env
 
 echo "🚀 Iniciando servicios..."
@@ -20,50 +20,62 @@ else
     DOCKER_CMD="docker"
 fi
 
-if [ "$IOT_DEVICE" = "true" ]; then
-    echo "📟 Modo IoT detectado - Excluyendo traffic-sim"
-    echo "🔧 Construyendo imágenes optimizadas para IoT..."
-    $DOCKER_CMD compose build --build-arg IOT_DEVICE=true postgres traffic-storage traffic-sync traffic-control
-    
-    echo "📦 Iniciando servicios en orden..."
-    $DOCKER_CMD compose up -d postgres
-    echo "⏳ Esperando PostgreSQL..."
-    sleep 10
-    
-    $DOCKER_CMD compose up -d traffic-storage traffic-sync
-    echo "⏳ Esperando storage y sync..."
-    sleep 5
-    
-    $DOCKER_CMD compose up -d traffic-control
-    echo "✅ Servicios IoT iniciados."
-    
-    # Servicios para mostrar logs
-    SERVICES="traffic-storage traffic-sync traffic-control"
-    
-else
-    echo "💻 Modo estándar detectado - Incluyendo todos los servicios"
-    echo "🔧 Construyendo imágenes con todas las dependencias..."
-    $DOCKER_CMD compose build --build-arg IOT_DEVICE=false
-    
-    echo "📦 Iniciando servicios en orden..."
-    $DOCKER_CMD compose up -d postgres
-    echo "⏳ Esperando PostgreSQL..."
-    sleep 10
-    
-    $DOCKER_CMD compose up -d traffic-storage traffic-sync
-    echo "⏳ Esperando storage y sync..."
-    sleep 5
-    
-    $DOCKER_CMD compose up -d traffic-control
-    echo "⏳ Esperando control..."
-    sleep 5
-    
+# Configurar servicios según el modo de ejecución
+case $EXECUTION_MODE in
+    "iot")
+        echo "📟 Modo IoT detectado - Excluyendo traffic-sim"
+        echo "🔧 Construyendo imágenes optimizadas para IoT..."
+        $DOCKER_CMD compose build \
+            --build-arg EXECUTION_MODE=iot \
+            --build-arg USE_IPFS=true \
+            --build-arg USE_SUMO=false \
+            postgres traffic-storage traffic-sync traffic-control
+        SERVICES="traffic-storage traffic-sync traffic-control"
+        ;;
+    "web")
+        echo "🌐 Modo Web Service detectado"
+        echo "🔧 Construyendo imágenes para servicio web..."
+        $DOCKER_CMD compose build \
+            --build-arg EXECUTION_MODE=web \
+            --build-arg USE_IPFS=false \
+            --build-arg USE_SUMO=true
+        SERVICES="traffic-storage traffic-sync traffic-control traffic-sim"
+        ;;
+    "local")
+        echo "💻 Modo Local detectado"
+        echo "🔧 Construyendo imágenes para entorno local..."
+        $DOCKER_CMD compose build \
+            --build-arg EXECUTION_MODE=local \
+            --build-arg USE_IPFS=true \
+            --build-arg USE_SUMO=true
+        SERVICES="traffic-storage traffic-sync traffic-control traffic-sim"
+        ;;
+    *)
+        echo "❌ Modo de ejecución no válido en .env"
+        exit 1
+        ;;
+esac
+
+echo "📦 Iniciando servicios en orden..."
+$DOCKER_CMD compose up -d postgres
+echo "⏳ Esperando PostgreSQL..."
+sleep 10
+
+$DOCKER_CMD compose up -d traffic-storage traffic-sync
+echo "⏳ Esperando storage y sync..."
+sleep 5
+
+$DOCKER_CMD compose up -d traffic-control
+echo "⏳ Esperando control..."
+sleep 5
+
+if [ "$EXECUTION_MODE" != "iot" ]; then
     $DOCKER_CMD compose up -d traffic-sim
-    echo "✅ Todos los servicios iniciados."
-    
-    # Servicios para mostrar logs
-    SERVICES="traffic-storage traffic-sync traffic-control traffic-sim"
+    echo "⏳ Esperando simulador..."
+    sleep 5
 fi
+
+echo "✅ Servicios iniciados según modo $EXECUTION_MODE."
 
 # Mostrar estado de los servicios
 echo ""
@@ -90,7 +102,7 @@ echo "📡 URLs disponibles:"
 echo "   - Storage: http://localhost:8000"
 echo "   - Sync: http://localhost:8002"
 echo "   - Control: http://localhost:8003"
-if [ "$IOT_DEVICE" != "true" ]; then
+if [ "$EXECUTION_MODE" != "iot" ]; then
     echo "   - Sim: http://localhost:8001"
 fi
 
