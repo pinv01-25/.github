@@ -20,13 +20,15 @@ Este sistema está compuesto por 4 módulos principales, organizados en reposito
 
 > **API REST de almacenamiento de datos** y acceso transparente.
 
-- Recibe metadatos de tráfico y optimización en JSON.
+- Recibe metadatos de tráfico y optimización en JSON (formato unificado 2.0).
+- **Soporte para lotes**: Maneja tanto sensores individuales como lotes de 1-10 sensores.
 - Almacena la metadata en **IPFS** y guarda el `CID` asociado en **BlockDAG testnet**.
+- **Timestamps Unix**: Requiere timestamps en formato Unix (int) para compatibilidad con BlockDAG.
 - Exposición de endpoints REST:
 
-  - `POST /upload`
-  - `POST /download`
-  - `GET /healthcheck`
+  - `POST /upload` - Sube datos (sensores individuales o lotes)
+  - `POST /download` - Descarga datos
+  - `GET /healthcheck` - Verificación de estado
 
 - Valida la estructura de los datos y asegura trazabilidad.
 
@@ -34,7 +36,12 @@ Este sistema está compuesto por 4 módulos principales, organizados en reposito
 
 > **Motor de análisis y optimización de tráfico**.
 
-- Recibe datos de tráfico almacenados.
+- Recibe datos de tráfico almacenados (formato unificado 2.0).
+- **Procesamiento en lotes**: Maneja lotes de 1-10 sensores en una sola petición.
+- **Fuzzy Logic**: Sistema de inferencia Mamdani para clasificar congestión.
+- **Clustering**: Agrupación jerárquica de sensores por patrones de congestión.
+- **PSO**: Optimización por enjambre de partículas para tiempos de semáforos.
+- **Frontend web**: Dashboard interactivo para análisis y visualización.
 - Clasifica la gravedad de la congestión (ninguna, leve, severa).
 - Calcula tiempos óptimos de luz verde/roja por semáforo.
 - Genera metadatos de optimización y los envía a `traffic-storage`.
@@ -44,6 +51,10 @@ Este sistema está compuesto por 4 módulos principales, organizados en reposito
 > **Orquestador del sistema**.
 
 - Coordina la comunicación entre los módulos `sim → storage → sync`.
+- **Procesamiento unificado**: Maneja tanto sensores individuales como lotes de 1-10 sensores.
+- **Base de datos PostgreSQL**: Almacena metadatos y registros de procesamiento.
+- **Validación robusta**: Verifica estructura de datos, timestamps y límites.
+- **Endpoints de metadatos**: Gestión completa de metadatos por semáforo, tipo y estadísticas.
 - Escucha eventos de tráfico (alta densidad).
 - Recupera datos y resultados desde `traffic-storage`.
 
@@ -53,6 +64,7 @@ Este sistema está compuesto por 4 módulos principales, organizados en reposito
 
 - **SUMO + TraCI**: Simulación de tráfico
 - **FastAPI**: APIs REST
+- **PostgreSQL**: Base de datos para metadatos
 - **IPFS**: Almacenamiento descentralizado de datos
 - **BlockDAG testnet**: Registro de `CIDs` y eventos verificables
 
@@ -60,50 +72,88 @@ Este sistema está compuesto por 4 módulos principales, organizados en reposito
 
 ## Estructura de Datos
 
-### Tipo `data`
+### Formato Unificado 2.0 - Lote de Sensores
 
 ```json
 {
-  "version": "1.0",
+  "version": "2.0",
   "type": "data",
-  "timestamp": "2025-04-24T08:15:00Z",
-  "traffic_light_id": "TL_21",
-  "controlled_edges": ["edge42", "edge43"],
-  "metrics": {
-    "vehicles_per_minute": 65,
-    "avg_speed_kmh": 43.5,
-    "avg_circulation_time_sec": 92,
-    "density": 0.72
-  },
-  "vehicle_stats": {
-    "motorcycle": 12,
-    "car": 45,
-    "bus": 2,
-    "truck": 6
-  }
+  "timestamp": "2025-07-14T00:33:55Z",
+  "traffic_light_id": "03",
+  "sensors": [
+    {
+      "traffic_light_id": "03",
+      "controlled_edges": ["edge05", "edge01", "edge14"],
+      "metrics": {
+        "vehicles_per_minute": 34,
+        "avg_speed_kmh": 34.6,
+        "avg_circulation_time_sec": 20,
+        "density": 0.49
+      },
+      "vehicle_stats": {
+        "motorcycle": 25,
+        "car": 44,
+        "bus": 4,
+        "truck": 10
+      }
+    },
+    {
+      "traffic_light_id": "07",
+      "controlled_edges": ["edge12", "edge08", "edge03"],
+      "metrics": {
+        "vehicles_per_minute": 28,
+        "avg_speed_kmh": 42.1,
+        "avg_circulation_time_sec": 18,
+        "density": 0.31
+      },
+      "vehicle_stats": {
+        "motorcycle": 18,
+        "car": 52,
+        "bus": 2,
+        "truck": 8
+      }
+    }
+  ]
 }
 ```
 
-### Tipo `optimization`
+### Formato Unificado 2.0 - Optimización
 
 ```json
 {
-  "version": "1.0",
+  "version": "2.0",
   "type": "optimization",
-  "timestamp": "2025-04-24T08:16:00Z",
-  "traffic_light_id": "TL_21",
-  "optimization": {
-    "green_time_sec": 45,
-    "red_time_sec": 30
-  },
-  "impact": {
-    "original_congestion": 78,
-    "optimized_congestion": 45,
-    "original_category": "severe",
-    "optimized_category": "mild"
-  }
+  "timestamp": "2025-07-14T00:33:55Z",
+  "traffic_light_id": "03",
+  "optimizations": [
+    {
+      "version": "2.0",
+      "type": "optimization",
+      "timestamp": "2025-07-14T00:33:55Z",
+      "traffic_light_id": "03",
+      "cluster_sensors": ["03", "07"],
+      "optimization": {
+        "green_time_sec": 14,
+        "red_time_sec": 75
+      },
+      "impact": {
+        "original_congestion": 4,
+        "optimized_congestion": 1,
+        "original_category": "mild",
+        "optimized_category": "none"
+      }
+    }
+  ]
 }
 ```
+
+### Características del Formato 2.0
+
+- **Versión**: Siempre "2.0" para compatibilidad
+- **Timestamps**: Formato ISO string (traffic-sim, traffic-sync) o Unix int (traffic-storage)
+- **Lotes**: Soporte para 1-10 sensores por lote
+- **Clustering**: Información de agrupación de sensores en optimizaciones
+- **Retrocompatibilidad**: Compatible con sensores individuales
 
 ---
 
@@ -116,6 +166,8 @@ Cada módulo tiene su propio `README.md` con instrucciones para instalación, ej
 1. Clonar todos los repos en una carpeta común.
 2. Usar entornos virtuales por módulo (`venv`).
 3. Levantar los módulos de forma aislada.
+4. **Configurar PostgreSQL** para traffic-control.
+5. **Configurar IPFS** para traffic-storage.
 
 ## Despliegue del Sistema con Docker
 
